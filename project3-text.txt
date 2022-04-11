@@ -1,0 +1,653 @@
+
+
+#I installed Windows Terminal
+#I spun an Ec2 instance, configured the SG/firewall on port 22 and 80 
+to allow SSH and inbound http connections respectively.
+
+#connected to instance via windows terminal and ran Ubuntu update and upgrade
+
+sudo apt update
+
+sudo apt upgrade
+
+curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
+
+# Install NOde JS: installs both nodejs and npm
+
+sudo apt-get install -y nodejs  
+
+# I checked the node and npm installations:
+
+node -v
+
+v12.22.11
+
+npm -v
+
+6.14.16
+
+# I created the Todo directory
+mkdir Todo
+
+# I navigated to the Todo directory and initialised npm to create package.json
+
+cd Todo
+
+npm init
+
+#listed folder content to confirm if package.json created:
+
+ls
+
+# It was created successfullly
+
+# Install Express JS
+
+npm install express
+
+# I created a file index.js with the command below
+
+touch index.js
+
+#I ran ls to confirm that index.js file was successfully created
+ls
+#successfully created
+
+# I installed the dotenv module
+
+npm install dotenv
+
+vim index.js
+
+# I pasted the code below into index.js
+const express = require('express');
+require('dotenv').config();
+
+const app = express();
+
+const port = process.env.PORT || 5000;
+
+app.use((req, res, next) => {
+res.header("Access-Control-Allow-Origin", "\*");
+res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+next();
+});
+
+app.use((req, res, next) => {
+res.send('Welcome to Express');
+});
+
+app.listen(port, () => {
+console.log(`Server running on port ${port}`)
+});
+
+# I saved with :w and exited with :qa
+
+# Next I opened (added) port 5000 in the instance security group since  process.env.PORT || 5000 was set
+
+
+
+#i rtrieved my server’s Public IP and public DNS name: by running:
+curl -s http://169.254.169.254/latest/meta-data/public-ipv4 for Public IP address 
+curl -s http://169.254.169.254/latest/meta-data/public-hostname for Public DNS name.
+
+
+#I started the server by navigating first to the Todo Directory and running:
+node index.js
+# Success!!  Server running on port 5000
+
+I navigated to the public IP on port 5000
+
+
+Next I opened up port 5000  in EC2 Security Groups. 
+
+Next i opened up the browser and ran http://<PublicIP-or-PublicDNS>:5000 , substituting public IP for the Instance public ip.
+
+
+Welcome to Express was succesfully displayed.
+
+# I created a new directory called routes
+mkdir routes
+
+
+# Changed directory to routes folder.
+
+cd routes
+
+#Created a file api.js 
+
+touch api.js
+# Opened the file in vim
+
+vim api.js
+
+# Inserted the place holder code below for the different routes
+const express = require ('express');
+const router = express.Router();
+
+router.get('/todos', (req, res, next) => {
+
+});
+
+router.post('/todos', (req, res, next) => {
+
+});
+
+router.delete('/todos/:id', (req, res, next) => {
+
+})
+
+module.exports = router;
+
+#The next task was to create a Schema and a model.
+
+# Change directory to the Todo folder and install Mongoose
+
+npm install mongoose
+
+# I created a new folder models
+
+mkdir models
+
+# Changed directory to the ‘models’ folder
+
+cd models
+
+# Inside the models folder, I created a file called todo.js
+
+touch todo.js
+
+
+# I opened todo.js then pasted the code below into it:
+
+const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
+
+//create schema for todo
+const TodoSchema = new Schema({
+action: {
+type: String,
+required: [true, 'The todo text field is required']
+}
+})
+
+//create model for todo
+const Todo = mongoose.model('todo', TodoSchema);
+
+module.exports = Todo;
+
+# Next I updated the routes from the file api.js in the ‘routes’ directory to make use of the new model.
+
+
+vim api.js
+
+I deletedthe code inside with :%d command and pasted the revised code.
+
+const express = require ('express');
+const router = express.Router();
+const Todo = require('../models/todo');
+
+router.get('/todos', (req, res, next) => {
+
+//this will return all the data, exposing only the id and action field to the client
+Todo.find({}, 'action')
+.then(data => res.json(data))
+.catch(next)
+});
+
+router.post('/todos', (req, res, next) => {
+if(req.body.action){
+Todo.create(req.body)
+.then(data => res.json(data))
+.catch(next)
+}else {
+res.json({
+error: "The input field is empty"
+})
+}
+});
+
+router.delete('/todos/:id', (req, res, next) => {
+Todo.findOneAndDelete({"_id": req.params.id})
+.then(data => res.json(data))
+.catch(next)
+})
+
+module.exports = router;
+
+
+-----------------
+
+# Next, I created a mongodb database
+
+
+# I created a file .env in the Todo directory 
+
+touch .env
+vi .env
+
+# I added the connection string to access the database in it, just as below:
+
+# I then updated index.js to reflect the use of .env so that Node.js can connect to the database.
+
+
+vim index.js
+: %d
+i to enter the insert mode in vim
+
+# I pasted the code below into index.js 
+
+const express = require('express');
+const bodyParser = require('body-parser');
+const mongoose = require('mongoose');
+const routes = require('./routes/api');
+const path = require('path');
+require('dotenv').config();
+
+const app = express();
+
+const port = process.env.PORT || 5000;
+
+//connect to the database
+
+mongoose.connect(process.env.DB, { useNewUrlParser: true, useUnifiedTopology: true })
+.then(() => console.log(`Database connected successfully`))
+.catch(err => console.log(err));
+
+//since mongoose promise is depreciated, we overide it with node's promise
+mongoose.Promise = global.Promise;
+
+app.use((req, res, next) => {
+res.header("Access-Control-Allow-Origin", "\*");
+res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+next();
+});
+
+app.use(bodyParser.json());
+
+app.use('/api', routes);
+
+app.use((err, req, res, next) => {
+console.log(err);
+next();
+});
+
+app.listen(port, () => {
+console.log(`Server running on port ${port}`)
+});
+
+# Next, I started the server
+
+node index.js
+
+# Message ‘Database connected successfully
+
+# I used postman to test all the endpoints of the application
+
+POST request to the API http://<PublicIP-or-PublicDNS>:5000/api/todos. 
+
+GET request to your API on http://<PublicIP-or-PublicDNS>:5000/api/todos. 
+
+---------------------
+
+# Next was to implement the front end using React
+
+# In the root directory i.e  Todo 
+
+npx create-react-app client
+
+# Next, I installed the dependencies
+
+npm install concurrently --save-dev
+
+npm install nodemon --save-dev
+
+I then opened package.json in the Todo folderand edited it.
+
+"scripts": {
+"start": "node index.js",
+"start-watch": "nodemon index.js",
+"dev": "concurrently \"npm run start-watch\" \"cd client && npm start\""
+},
+
+I also edited package.json in the Client directory.
+
+cd client
+
+vi package.json
+
+# I added the key value pair in the package.json file "proxy": "http://PublicIPAddress:5000".
+
+# In the Todo directory, I ran dev:
+
+npm run dev
+
+# I opened port 3000 in the instance security group
+
+# Next, I set up the react components
+cd client
+# Changed to the src directory
+
+cd src
+Here, I created another folder called components
+
+mkdir components
+
+cd components
+# Inside ‘components’ directory,  I created Input.js, ListTodo.js and Todo.js.
+
+touch Input.js ListTodo.js Todo.js
+
+# I opened Input.js file and pasted the following code
+
+vi Input.js
+
+import React, { Component } from 'react';
+import axios from 'axios';
+
+class Input extends Component {
+
+state = {
+action: ""
+}
+
+addTodo = () => {
+const task = {action: this.state.action}
+
+    if(task.action && task.action.length > 0){
+      axios.post('/api/todos', task)
+        .then(res => {
+          if(res.data){
+            this.props.getTodos();
+            this.setState({action: ""})
+          }
+        })
+        .catch(err => console.log(err))
+    }else {
+      console.log('input field required')
+    }
+
+}
+
+handleChange = (e) => {
+this.setState({
+action: e.target.value
+})
+}
+
+render() {
+let { action } = this.state;
+return (
+<div>
+<input type="text" onChange={this.handleChange} value={action} />
+<button onClick={this.addTodo}>add todo</button>
+</div>
+)
+}
+}
+
+export default Input
+
+#To make use of Axios, I navigated to the client folder to run yarn add axios or npm install axios.
+
+cd ..
+
+#Move to clients folder
+
+cd ..
+Install Axios
+
+npm install axios
+
+
+cd src/components
+After that open your ListTodo.js
+
+vi ListTodo.js
+in the ListTodo.js copy and paste the following code
+
+import React from 'react';
+
+const ListTodo = ({ todos, deleteTodo }) => {
+
+return (
+<ul>
+{
+todos &&
+todos.length > 0 ?
+(
+todos.map(todo => {
+return (
+<li key={todo._id} onClick={() => deleteTodo(todo._id)}>{todo.action}</li>
+)
+})
+)
+:
+(
+<li>No todo(s) left</li>
+)
+}
+</ul>
+)
+}
+
+export default ListTodo
+Then in your Todo.js file you write the following code
+
+import React, {Component} from 'react';
+import axios from 'axios';
+
+import Input from './Input';
+import ListTodo from './ListTodo';
+
+class Todo extends Component {
+
+state = {
+todos: []
+}
+
+componentDidMount(){
+this.getTodos();
+}
+
+getTodos = () => {
+axios.get('/api/todos')
+.then(res => {
+if(res.data){
+this.setState({
+todos: res.data
+})
+}
+})
+.catch(err => console.log(err))
+}
+
+deleteTodo = (id) => {
+
+    axios.delete(`/api/todos/${id}`)
+      .then(res => {
+        if(res.data){
+          this.getTodos()
+        }
+      })
+      .catch(err => console.log(err))
+
+}
+
+render() {
+let { todos } = this.state;
+
+    return(
+      <div>
+        <h1>My Todo(s)</h1>
+        <Input getTodos={this.getTodos}/>
+        <ListTodo todos={todos} deleteTodo={this.deleteTodo}/>
+      </div>
+    )
+
+}
+}
+
+export default Todo;
+
+# I adjusted the react code in App.js 
+
+#Move to the src folder
+
+cd ..
+# In the src folder
+
+vi App.js
+
+# I pasted the code below into it
+
+import React from 'react';
+
+import Todo from './components/Todo';
+import './App.css';
+
+const App = () => {
+return (
+<div className="App">
+<Todo />
+</div>
+);
+}
+
+export default App;
+After pasting, exit the editor.
+
+In the src directory open the App.css
+
+vi App.css
+Then paste the following code into App.css:
+
+.App {
+text-align: center;
+font-size: calc(10px + 2vmin);
+width: 60%;
+margin-left: auto;
+margin-right: auto;
+}
+
+input {
+height: 40px;
+width: 50%;
+border: none;
+border-bottom: 2px #101113 solid;
+background: none;
+font-size: 1.5rem;
+color: #787a80;
+}
+
+input:focus {
+outline: none;
+}
+
+button {
+width: 25%;
+height: 45px;
+border: none;
+margin-left: 10px;
+font-size: 25px;
+background: #101113;
+border-radius: 5px;
+color: #787a80;
+cursor: pointer;
+}
+
+button:focus {
+outline: none;
+}
+
+ul {
+list-style: none;
+text-align: left;
+padding: 15px;
+background: #171a1f;
+border-radius: 5px;
+}
+
+li {
+padding: 15px;
+font-size: 1.5rem;
+margin-bottom: 15px;
+background: #282c34;
+border-radius: 5px;
+overflow-wrap: break-word;
+cursor: pointer;
+}
+
+@media only screen and (min-width: 300px) {
+.App {
+width: 80%;
+}
+
+input {
+width: 100%
+}
+
+button {
+width: 100%;
+margin-top: 15px;
+margin-left: 0;
+}
+}
+
+@media only screen and (min-width: 640px) {
+.App {
+width: 60%;
+}
+
+input {
+width: 50%;
+}
+
+button {
+width: 30%;
+margin-left: 10px;
+margin-top: 0;
+}
+}
+Exit
+
+
+# Next, I edited index.css
+
+vim index.css
+# And pasted the code below:
+
+body {
+margin: 0;
+padding: 0;
+font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+"Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+sans-serif;
+-webkit-font-smoothing: antialiased;
+-moz-osx-font-smoothing: grayscale;
+box-sizing: border-box;
+background-color: #282c34;
+color: #787a80;
+}
+
+code {
+font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
+monospace;
+}
+
+# I navigated to the Todo directory
+
+cd ../..
+
+# And ran npm run dev
+
+npm run dev
+
+
+# App fully functional
+
+# refer to screenshots 
+
+
+
+
